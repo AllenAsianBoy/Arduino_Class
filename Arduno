@@ -1,0 +1,151 @@
+/*
+  伺服馬達控制範例
+  展示如何使用伺服馬達實現不同的控制效果
+*/
+
+#include <Servo.h>
+
+// 定義腳位
+const int servoPin = 9;      // 伺服馬達接在 9 號腳位
+const int potPin = A0;       // 可變電阻接在 A0
+const int buttonPin = 2;     // 按鈕接在 2 號腳位
+
+// 建立伺服馬達物件
+Servo myServo;
+
+// 定義變數
+int currentAngle = 90;       // 目前角度
+int targetAngle = 90;        // 目標角度
+int mode = 0;                // 目前模式
+unsigned long lastChange = 0; // 上次改變時間
+
+void setup() {
+  // 連接伺服馬達
+  myServo.attach(servoPin);
+  
+  // 設定按鈕腳位
+  pinMode(buttonPin, INPUT_PULLUP);
+  
+  // 初始化序列通訊
+  Serial.begin(9600);
+  Serial.println("伺服馬達控制範例");
+  printModeInfo();
+  
+  // 移動到初始位置
+  myServo.write(currentAngle);
+}
+
+void loop() {
+  // 檢查按鈕是否被按下以切換模式
+  if (digitalRead(buttonPin) == LOW) {
+    mode = (mode + 1) % 4;  // 4 種模式
+    printModeInfo();
+    delay(200);  // 防彈跳
+  }
+  
+  // 根據模式執行不同的控制
+  switch (mode) {
+    case 0:  // 可變電阻控制
+      potentiometerControl();
+      break;
+      
+    case 1:  // 來回掃描
+      sweepMode();
+      break;
+      
+    case 2:  // 步進移動
+      stepMode();
+      break;
+      
+    case 3:  // 隨機位置
+      randomMode();
+      break;
+  }
+}
+
+// 顯示目前模式資訊
+void printModeInfo() {
+  Serial.print("目前模式: ");
+  switch (mode) {
+    case 0:
+      Serial.println("可變電阻控制");
+      break;
+    case 1:
+      Serial.println("來回掃描");
+      break;
+    case 2:
+      Serial.println("步進移動");
+      break;
+    case 3:
+      Serial.println("隨機位置");
+      break;
+  }
+}
+
+// 模式 0：可變電阻控制
+void potentiometerControl() {
+  int potValue = analogRead(potPin);
+  targetAngle = map(potValue, 0, 1023, 0, 180);
+  
+  if (targetAngle != currentAngle) {
+    currentAngle = targetAngle;
+    myServo.write(currentAngle);
+    
+    Serial.print("角度: ");
+    Serial.println(currentAngle);
+  }
+  
+  delay(15);
+}
+
+// 模式 1：來回掃描
+void sweepMode() {
+  static int direction = 1;
+  
+  if (millis() - lastChange > 15) {
+    currentAngle += direction;
+    
+    if (currentAngle >= 180) {
+      currentAngle = 180;
+      direction = -1;
+    } else if (currentAngle <= 0) {
+      currentAngle = 0;
+      direction = 1;
+    }
+    
+    myServo.write(currentAngle);
+    lastChange = millis();
+  }
+}
+
+// 模式 2：步進移動
+void stepMode() {
+  static int positions[] = {0, 45, 90, 135, 180};
+  static int currentPos = 0;
+  
+  if (millis() - lastChange > 1000) {
+    currentPos = (currentPos + 1) % 5;
+    currentAngle = positions[currentPos];
+    myServo.write(currentAngle);
+    
+    Serial.print("步進到位置: ");
+    Serial.println(currentAngle);
+    
+    lastChange = millis();
+  }
+}
+
+// 模式 3：隨機位置
+void randomMode() {
+  if (millis() - lastChange > 1000) {
+    targetAngle = random(0, 181);  // 0-180 度
+    
+    Serial.print("移動到隨機角度: ");
+    Serial.println(targetAngle);
+    
+    myServo.write(targetAngle);
+    currentAngle = targetAngle;
+    
+    lastChange = millis();
+  }
+} 
