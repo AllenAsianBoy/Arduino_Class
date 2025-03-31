@@ -2,6 +2,12 @@
 
 此專案展示如何使用搖桿模組控制 8 顆 NeoPixel LED 燈條。透過搖桿的 X 軸、Y 軸與按鈕，可以控制 LED 的位置、分組與顏色。
 
+
+
+https://github.com/user-attachments/assets/baf32abd-8eb4-4c2e-82b8-da2cf15e98d8
+
+
+
 ## 功能特色
 
 - **搖桿 X 軸**：控制當前亮起的 LED 位置。
