@@ -4,6 +4,8 @@
 
 ![image](https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaHk4NncxenBpdHZ2ZGM4aWM2NGF5eW96Zng2d2I1bDBvZTQ0czNsdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/WVsStBPtDfpqbqP9sl/giphy.gif)
 
+![image]()
+
 ## 功能特色
 
 - **搖桿 X 軸**：控制當前亮起的 LED 位置。
