@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>縮小紫色粒子 + 碰撞音效</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #0e1e33;
+    }
+    #canvas-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+    }
+    #stats {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-wrapper"><canvas></canvas></div>
+  <div id="stats"></div>
+
+  <!-- 音效 -->
+  <audio id="mergeSound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_77dbf064e8.mp3?filename=click-soft-2-102218.mp3" preload="auto"></audio>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.querySelector('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      const mergeSound = document.getElementById('mergeSound');
+
+      window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      });
+
+      const mouse = { x: null, y: null };
+      const clickRadius = 150;
+      const explosionDuration = 3000;
+      const waveCount = 10;
+      const waves = [];
+      let time = Math.random() * 100;
+      const collisionColor = 'rgb(99, 83, 247)'; // 紫色合併後的顏色
+      let absorptionTriggered = false;
+      let absorptionProgress = 0;
+      let whiteParticleSpeed = 1; // 白色粒子的流動速度
+
+      window.addEventListener('wheel', e => {
+        if (purpleCount >= 30) {
+          whiteParticleSpeed += e.deltaY * 0.001; // 滾輪控制白色粒子的速度
+          whiteParticleSpeed = Math.max(0.1, Math.min(5, whiteParticleSpeed)); // 限制速度範圍
+        }
+      });
+
+      window.addEventListener('mousemove', e => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+      });
+
+      function getWaveY(wave, x, t) {
+        return wave.verticalOffset + Math.sin(x * wave.frequency + t * wave.speed + wave.phase) * wave.amplitude;
+      }
+
+      for (let i = 0; i < waveCount; i++) {
+        const wave = {
+          frequency: 0.002 + Math.random() * 0.002,
+          amplitude: 60 + Math.random() * 80,
+          speed: 0.005 + Math.random() * 0.01,
+          phase: Math.random() * Math.PI * 2,
+          verticalOffset: canvas.height * 0.3 + i * 30,
+          color: 'rgba(93,126,187,0.8)',
+          particles: []
+        };
+
+        for (let j = 0; j < 50; j++) {
+          const x = Math.random() * canvas.width;
+          wave.particles.push({
+            originalX: x,
+            originalY: getWaveY(wave, x, time),
+            x,
+            y: getWaveY(wave, x, time),
+            radius: 1 + Math.random() * 1.5,
+            opacity: 0.3 + Math.random() * 0.5,
+            exploding: false,
+            explosionStartTime: null,
+            vx: 0,
+            vy: 0,
+            trail: [],
+            color: null
+          });
+        }
+
+        waves.push(wave);
+      }
+
+      window.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        const now = Date.now();
+        waves.forEach(wave => {
+          wave.particles.forEach(p => {
+            const dx = mouse.x - p.x;
+            const dy = mouse.y - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < clickRadius && !p.exploding) {
+              const angle = Math.random() * Math.PI * 2;
+              const speed = 3 + Math.random() * 2;
+              p.vx = Math.cos(angle) * speed;
+              p.vy = Math.sin(angle) * speed;
+              p.exploding = true;
+              p.explosionStartTime = now;
+              p.trail = [];
+            }
+          });
+        });
+      });
+
+      function drawConnection(p1, p2, maxDist) {
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < maxDist) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.strokeStyle = `rgba(255,255,255,${1 - dist / maxDist})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+
+      function animate() {
+        const statsDiv = document.getElementById('stats');
+        let whiteCount = 0;
+        let orangeCount = 0;
+        let purpleCount = 0;
+        const allParticles = [];
+
+        for (let w = 0; w < waves.length; w++) {
+          const particles = waves[w].particles;
+          for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+              const p1 = particles[i];
+              const p2 = particles[j];
+              const dx = p1.x - p2.x;
+              const dy = p1.y - p2.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist <= p1.radius + p2.radius) {
+                let newColor = null;
+                if (!p1.color && !p2.color) {
+                  newColor = 'rgba(255, 140, 0, 0.9)';
+                } else if (p1.color === 'rgba(255, 140, 0, 0.9)' && p2.color === 'rgba(255, 140, 0, 0.9)') {
+                  newColor = collisionColor;
+                }
+                if (newColor) {
+                  const newX = (p1.x + p2.x) / 2;
+                  const newY = (p1.y + p2.y) / 2;
+                  const newRadius = Math.max(p1.radius, p2.radius) * 3;
+
+                  try {
+                    mergeSound.currentTime = 0;
+                    mergeSound.volume = 0.3;
+                    mergeSound.play();
+                  } catch (e) {}
+
+                  particles.splice(j, 1);
+                  particles[i] = {
+                    ...p1,
+                    x: newX,
+                    y: newY,
+                    radius: newRadius,
+                    targetRadius: Math.max(p1.radius, p2.radius),
+                    color: newColor
+                  };
+                  j--;
+                }
+              }
+            }
+          }
+        }
+
+        time += 1;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const now = Date.now();
+
+        waves.forEach(wave => {
+          ctx.beginPath();
+          for (let x = 0; x <= canvas.width; x++) {
+            const y = getWaveY(wave, x, time);
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = wave.color;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+
+          wave.particles.forEach(p => {
+            if (p.color === 'rgba(255, 140, 0, 0.9)') orangeCount++;
+            else if (p.color === collisionColor) purpleCount++;
+            else whiteCount++;
+
+            if (!p.exploding) {
+              p.originalX += Math.sin(time * 0.02) * 2;
+              p.originalY = getWaveY(wave, p.originalX, time);
+              p.x += (p.originalX - p.x) * 0.05;
+              p.y += (p.originalY - p.y) * 0.05;
+            } else {
+              if (now - p.explosionStartTime > explosionDuration) {
+                p.exploding = false;
+              } else {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vx *= 0.96;
+                p.vy *= 0.96;
+              }
+            }
+
+            p.trail = p.trail || [];
+            p.trail.push({ x: p.x, y: p.y });
+            if (p.trail.length > 10) p.trail.shift();
+            for (let i = 0; i < p.trail.length; i++) {
+              const t = p.trail[i];
+              const alpha = (i + 1) / p.trail.length * p.opacity;
+              ctx.beginPath();
+              ctx.arc(t.x, t.y, p.radius * (i / p.trail.length), 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(255, 255, 200, ${alpha})`;
+              ctx.fill();
+            }
+
+            const dx = p.x - mouse.x;
+            const dy = p.y - mouse.y;
+            const distToMouse = Math.sqrt(dx * dx + dy * dy);
+            const glow = distToMouse < 100 ? (1 - distToMouse / 100) : 0;
+            const proximityEffect = distToMouse < 150 ? (1 - distToMouse / 150) * 2 : 0;
+            const adjustedRadius = p.color === collisionColor
+              ? p.radius * 0.5 + proximityEffect // 縮小紫色粒子
+              : p.color === 'rgba(255, 140, 0, 0.9)'
+              ? p.radius * 0.5 + proximityEffect // 縮小橘色粒子
+              : p.radius + proximityEffect;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, adjustedRadius + glow * 2, 0, Math.PI * 2);
+            ctx.fillStyle = p.color || `rgba(255, 255, 255, ${p.opacity + glow * 0.5})`;
+            ctx.fill();
+
+            if (!p.exploding) allParticles.push({ x: p.x, y: p.y });
+          });
+        });
+
+        statsDiv.textContent = `白色粒子：${whiteCount}｜橘色粒子：${orangeCount}｜紫色粒子：${purpleCount}`;
+
+        for (let i = 0; i < allParticles.length; i++) {
+          for (let j = i + 1; j < allParticles.length; j++) {
+            drawConnection(allParticles[i], allParticles[j], 100);
+          }
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    });
+  </script>
+</body>
+</html>
