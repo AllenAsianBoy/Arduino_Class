@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>六子棋攻防 Web Game</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: monospace;
+      background: #222;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    #controls, #info {
+      margin: 10px;
+    }
+    button {
+      margin: 0 5px;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    canvas {
+      background: #001f3f;
+      box-shadow: 0 0 10px #000;
+      border-radius: 4px;
+    }
+    .description {
+      max-width: 600px;
+      padding: 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid #444;
+      border-radius: 4px;
+      text-align: left;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="description">
+    <h2>六子棋攻防 Web Game</h2>
+    <p>玩家（紫色 ●）與電腦 AI（白色 ○）交替下子，當任一方有 6 顆同色棋子連成一線（橫、直、斜）即獲勝。</p>
+    <ul>
+      <li>點擊「開始遊戲」啟動計時與落子功能。</li>
+      <li>玩家先行，點擊棋盤空白處放置紫色棋子。</li>
+      <li>AI 採用攻防策略，自動防守或進攻。</li>
+      <li>畫面右側顯示計時、玩家步數與 AI 步數。</li>
+    </ul>
+  </div>
+
+  <div id="controls">
+    <button id="startBtn">開始遊戲</button>
+    <button id="resetBtn">重新開始</button>
+  </div>
+  <div id="info">
+    時間：<span id="timer">0</span> 秒 |
+    玩家步數：<span id="blackCount">0</span> |
+    AI 步數：<span id="whiteCount">0</span>
+  </div>
+
+  <canvas id="board" width="600" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const size = 15, cell = 40;
+    let board = [], gameStarted = false, gameOver = false;
+    let timer = 0, timerId = null;
+    let blackCount = 0, whiteCount = 0;
+    // 多個隱藏圓形座標
+    let hiddenCircles = [];
+
+    function randomHiddenCircles(count) {
+      // 不在邊界，保證9x9不會超出，且不重複
+      const set = new Set();
+      const arr = [];
+      while (arr.length < count) {
+        let x = Math.floor(Math.random() * (size - 8)) + 4;
+        let y = Math.floor(Math.random() * (size - 8)) + 4;
+        let key = x + ',' + y;
+        if (!set.has(key)) {
+          set.add(key);
+          arr.push({ x, y });
+        }
+      }
+      return arr;
+    }
+
+    function initBoard() {
+      board = Array.from({ length: size }, () => Array(size).fill(null));
+      gameStarted = gameOver = false;
+      timer = blackCount = whiteCount = 0;
+      clearInterval(timerId);
+      hiddenCircles = randomHiddenCircles(4);
+      updateInfo();
+      draw();
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // draw grid
+      ctx.strokeStyle = '#ddd';
+      for (let i=0;i<size;i++){
+        ctx.beginPath(); ctx.moveTo(cell/2, cell/2+i*cell); ctx.lineTo(cell/2+(size-1)*cell, cell/2+i*cell); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cell/2+i*cell, cell/2); ctx.lineTo(cell/2+i*cell, cell/2+(size-1)*cell); ctx.stroke();
+      }
+      // draw pieces
+      for (let y=0;y<size;y++){
+        for (let x=0;x<size;x++){
+          if(board[y][x]){
+            ctx.beginPath();
+            ctx.arc(cell/2+x*cell, cell/2+y*cell, 14,0,2*Math.PI);
+            // 判斷是否在任一隱藏圓形周圍(1格內)
+            let near = hiddenCircles.some(c => Math.abs(x - c.x) <= 1 && Math.abs(y - c.y) <= 1);
+            if (near) {
+              // 顏色變淺
+              ctx.fillStyle = board[y][x]==='black' ? '#a259e6' : '#fff';
+            } else {
+              ctx.fillStyle = board[y][x]==='black'?'#8000ff':'#fff';
+            }
+            ctx.fill(); ctx.stroke();
+          }
+        }
+      }
+      // // 若要顯示所有隱藏圓形，取消註解下方
+      // ctx.save();
+      // ctx.strokeStyle = 'red';
+      // ctx.setLineDash([4,4]);
+      // for (const c of hiddenCircles) {
+      //   ctx.beginPath();
+      //   ctx.arc(cell/2+c.x*cell, cell/2+c.y*cell, 10, 0, 2*Math.PI);
+      //   ctx.stroke();
+      // }
+      // ctx.restore();
+    }
+
+    function updateInfo(){
+      document.getElementById('timer').textContent = timer;
+      document.getElementById('blackCount').textContent = blackCount;
+      document.getElementById('whiteCount').textContent = whiteCount;
+    }
+
+    function checkWin(x,y,color){
+      const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+      for(const [dx,dy] of dirs){
+        let cnt=1;
+        for(let i=1;i<6;i++){ if(get(x+dx*i,y+dy*i)===color) cnt++; else break; }
+        for(let i=1;i<6;i++){ if(get(x-dx*i,y-dy*i)===color) cnt++; else break; }
+        if(cnt>=6) return true;
+      }
+      return false;
+    }
+    function get(x,y){ return (x>=0&&y>=0&&x<size&&y<size)?board[y][x]:null; }
+
+    function scorePos(x,y,color){
+      let best=0; const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+      for(const [dx,dy] of dirs){
+        let cnt=1; for(let i=1;i<6;i++){ if(get(x+dx*i,y+dy*i)===color) cnt++; else break; }
+        for(let i=1;i<6;i++){ if(get(x-dx*i,y-dy*i)===color) cnt++; else break; }
+        best=Math.max(best,cnt);
+      }
+      return best;
+    }
+
+    function clear9x9(cx, cy) {
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          let nx = cx + dx, ny = cy + dy;
+          if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+            if (board[ny][nx]) board[ny][nx] = null;
+          }
+        }
+      }
+      // 顯示爆炸提示
+      showExplosionMessage(cx, cy);
+    }
+
+    function showExplosionMessage(cx, cy) {
+      // 在棋盤中央顯示訊息，2秒後自動消失
+      const msg = document.createElement('div');
+      msg.textContent = `以觸發爆炸效果，周圍9×9棋子已被摧毀！`;
+      msg.style.position = 'absolute';
+      msg.style.left = (canvas.offsetLeft + canvas.width/2 - 120) + 'px';
+      msg.style.top = (canvas.offsetTop + canvas.height/2 - 30) + 'px';
+      msg.style.background = 'rgba(0,0,0,0.85)';
+      msg.style.color = '#ffec80';
+      msg.style.fontSize = '22px';
+      msg.style.fontWeight = 'bold';
+      msg.style.padding = '18px 28px';
+      msg.style.borderRadius = '12px';
+      msg.style.textAlign = 'center';
+      msg.style.zIndex = 1000;
+      msg.style.boxShadow = '0 0 16px #ffec80cc';
+      document.body.appendChild(msg);
+      setTimeout(()=>{ msg.remove(); }, 3000);
+    }
+
+    function aiPlace(){
+      if(gameOver) return;
+      let bestScore=-1, move=null;
+      for(let y=0;y<size;y++) for(let x=0;x<size;x++){
+        if(!board[y][x]){
+          const def=scorePos(x,y,'black');
+          const atk=scorePos(x,y,'white')+0.5;
+          const sc=Math.max(def,atk);
+          if(sc>bestScore){bestScore=sc;move={x,y};}
+        }
+      }
+      if(move){
+        // 若與任一隱藏圓形重疊，清空9x9
+        const hit = hiddenCircles.find(c => move.x === c.x && move.y === c.y);
+        if(hit){
+          clear9x9(move.x, move.y);
+          draw();
+          return;
+        }
+        board[move.y][move.x]='white'; whiteCount++; updateInfo(); draw();
+        if(checkWin(move.x,move.y,'white')){gameOver=true; clearInterval(timerId); setTimeout(()=>alert('電腦獲勝！'),100);} 
+      }
+    }
+
+    canvas.addEventListener('click',e=>{
+      if(!gameStarted||gameOver) return;
+      const rect=canvas.getBoundingClientRect();
+      const x=Math.floor((e.clientX-rect.left)/cell);
+      const y=Math.floor((e.clientY-rect.top)/cell);
+      if(x>=0&&y>=0&&x<size&&y<size&&!board[y][x]){
+        // 若與任一隱藏圓形重疊，清空9x9
+        const hit = hiddenCircles.find(c => x === c.x && y === c.y);
+        if(hit){
+          clear9x9(x, y);
+          draw();
+          return;
+        }
+        board[y][x]='black'; blackCount++; updateInfo(); draw();
+        if(checkWin(x,y,'black')){gameOver=true; clearInterval(timerId); setTimeout(()=>alert('你獲勝了！'),100);} else setTimeout(aiPlace,300);
+      }
+    });
+
+    document.getElementById('startBtn').onclick = () => {
+      if(!gameStarted){ gameStarted=true; timerId=setInterval(()=>{timer++;updateInfo();},1000);} };
+    document.getElementById('resetBtn').onclick = initBoard;
+
+    initBoard();
+  </script>
+</body>
+</html>
